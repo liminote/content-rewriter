@@ -140,39 +140,63 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          {/* 本月 AI 費用預估 */}
+          {/* 本月 Token 使用統計 */}
           <div className="bg-white/30 backdrop-blur-xl border border-white/20 rounded-3xl shadow-xl p-6">
-            <h2 className="text-lg font-medium text-indigo-800 mb-4">本月 AI 費用預估</h2>
+            <h2 className="text-lg font-medium text-indigo-800 mb-4">本月 Token 使用統計</h2>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Gemini</span>
-                <span className="text-sm font-medium text-indigo-800">
-                  {formatCurrency(stats?.estimatedCost.gemini || 0)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Claude</span>
-                <span className="text-sm font-medium text-indigo-800">
-                  {formatCurrency(stats?.estimatedCost.claude || 0)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">OpenAI</span>
-                <span className="text-sm font-medium text-indigo-800">
-                  {formatCurrency(stats?.estimatedCost.openai || 0)}
-                </span>
-              </div>
+              {stats?.tokenUsage.gemini.total > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-700">Gemini</span>
+                    <span className="text-sm font-medium text-indigo-800">
+                      {stats.tokenUsage.gemini.total.toLocaleString()} tokens
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-500 pl-4">
+                    <span>輸入: {stats.tokenUsage.gemini.input.toLocaleString()}</span>
+                    <span>輸出: {stats.tokenUsage.gemini.output.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+              {stats?.tokenUsage.claude.total > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-700">Claude</span>
+                    <span className="text-sm font-medium text-indigo-800">
+                      {stats.tokenUsage.claude.total.toLocaleString()} tokens
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-500 pl-4">
+                    <span>輸入: {stats.tokenUsage.claude.input.toLocaleString()}</span>
+                    <span>輸出: {stats.tokenUsage.claude.output.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+              {stats?.tokenUsage.openai.total > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-700">OpenAI</span>
+                    <span className="text-sm font-medium text-indigo-800">
+                      {stats.tokenUsage.openai.total.toLocaleString()} tokens
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-500 pl-4">
+                    <span>輸入: {stats.tokenUsage.openai.input.toLocaleString()}</span>
+                    <span>輸出: {stats.tokenUsage.openai.output.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
               <div className="pt-3 border-t border-indigo-300/40">
                 <div className="flex items-center justify-between">
                   <span className="text-base font-medium text-indigo-800">總計</span>
                   <span className="text-xl font-bold text-indigo-800">
-                    {formatCurrency(stats?.estimatedCost.total || 0)}
+                    {(stats?.tokenUsage.total.total || 0).toLocaleString()} tokens
                   </span>
                 </div>
               </div>
             </div>
             <p className="mt-4 text-xs text-slate-500">
-              * 費用為預估值，實際費用請以 AI 服務商帳單為準
+              ✨ 目前使用免費 API，無需付費
             </p>
           </div>
         </div>

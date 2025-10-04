@@ -27,12 +27,12 @@ export interface DashboardStats {
     usage_count: number
   }>
 
-  // 費用預估（簡化版，實際應該根據 AI pricing 計算）
-  estimatedCost: {
-    gemini: number
-    claude: number
-    openai: number
-    total: number
+  // Token 使用統計
+  tokenUsage: {
+    gemini: { input: number; output: number; total: number }
+    claude: { input: number; output: number; total: number }
+    openai: { input: number; output: number; total: number }
+    total: { input: number; output: number; total: number }
   }
 }
 
@@ -125,7 +125,7 @@ export const useAdminDashboardStore = create<AdminDashboardState>((set, get) => 
 
       const { data: monthLogs, error: monthError } = await supabase
         .from('usage_logs')
-        .select('ai_engine, success_count')
+        .select('ai_engine, success_count, input_tokens, output_tokens, total_tokens')
         .gte('created_at', monthStart.toISOString())
 
       if (monthError) throw monthError
@@ -157,15 +157,29 @@ export const useAdminDashboardStore = create<AdminDashboardState>((set, get) => 
         usage_count: item.usage_count || 0,
       }))
 
-      // 5. 費用預估（簡化版）
-      // 實際應該根據每個 AI 的 pricing 計算
-      const estimatedCost = {
-        gemini: aiEngineStats.gemini * 0.5, // 假設每次 $0.5
-        claude: aiEngineStats.claude * 1.0, // 假設每次 $1.0
-        openai: aiEngineStats.openai * 0.8, // 假設每次 $0.8
-        total: 0,
+      // 5. Token 使用統計
+      const tokenUsage = {
+        gemini: {
+          input: monthLogs?.filter((log) => log.ai_engine === 'gemini').reduce((sum, log) => sum + (log.input_tokens || 0), 0) || 0,
+          output: monthLogs?.filter((log) => log.ai_engine === 'gemini').reduce((sum, log) => sum + (log.output_tokens || 0), 0) || 0,
+          total: monthLogs?.filter((log) => log.ai_engine === 'gemini').reduce((sum, log) => sum + (log.total_tokens || 0), 0) || 0,
+        },
+        claude: {
+          input: monthLogs?.filter((log) => log.ai_engine === 'claude').reduce((sum, log) => sum + (log.input_tokens || 0), 0) || 0,
+          output: monthLogs?.filter((log) => log.ai_engine === 'claude').reduce((sum, log) => sum + (log.output_tokens || 0), 0) || 0,
+          total: monthLogs?.filter((log) => log.ai_engine === 'claude').reduce((sum, log) => sum + (log.total_tokens || 0), 0) || 0,
+        },
+        openai: {
+          input: monthLogs?.filter((log) => log.ai_engine === 'openai').reduce((sum, log) => sum + (log.input_tokens || 0), 0) || 0,
+          output: monthLogs?.filter((log) => log.ai_engine === 'openai').reduce((sum, log) => sum + (log.output_tokens || 0), 0) || 0,
+          total: monthLogs?.filter((log) => log.ai_engine === 'openai').reduce((sum, log) => sum + (log.total_tokens || 0), 0) || 0,
+        },
+        total: {
+          input: monthLogs?.reduce((sum, log) => sum + (log.input_tokens || 0), 0) || 0,
+          output: monthLogs?.reduce((sum, log) => sum + (log.output_tokens || 0), 0) || 0,
+          total: monthLogs?.reduce((sum, log) => sum + (log.total_tokens || 0), 0) || 0,
+        },
       }
-      estimatedCost.total = estimatedCost.gemini + estimatedCost.claude + estimatedCost.openai
 
       const stats: DashboardStats = {
         totalUsers,
@@ -177,7 +191,7 @@ export const useAdminDashboardStore = create<AdminDashboardState>((set, get) => 
         monthGenerations,
         aiEngineStats,
         topUsers,
-        estimatedCost,
+        tokenUsage,
       }
 
       set({ stats, loading: false })

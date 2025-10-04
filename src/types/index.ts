@@ -125,6 +125,9 @@ export interface UsageLog {
   template_count: number
   success_count: number
   error_count: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
   created_at: string
 }
 

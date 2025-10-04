@@ -95,7 +95,7 @@ async function authenticateRequest(req: VercelRequest): Promise<AuthenticatedUse
 // ============================================
 // AI Providers
 // ============================================
-async function generateContent({ prompt, article, engine }: { prompt: string; article: string; engine: AIEngine }): Promise<string> {
+async function generateContent({ prompt, article, engine }: { prompt: string; article: string; engine: AIEngine }): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   switch (engine) {
     case 'gemini':
       return generateWithGemini(prompt, article)
@@ -108,7 +108,7 @@ async function generateContent({ prompt, article, engine }: { prompt: string; ar
   }
 }
 
-async function generateWithGemini(prompt: string, article: string): Promise<string> {
+async function generateWithGemini(prompt: string, article: string): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured')
@@ -128,7 +128,12 @@ ${article}`
   const response = await result.response
   const text = response.text()
 
-  return text
+  // Get token usage from response
+  const usageMetadata = response.usageMetadata
+  const inputTokens = usageMetadata?.promptTokenCount || 0
+  const outputTokens = usageMetadata?.candidatesTokenCount || 0
+
+  return { text, inputTokens, outputTokens }
 }
 
 interface GenerateRequest {
@@ -219,19 +224,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 5. 依序產出各模板內容
     const outputs: GenerateOutput[] = []
     const generatedAt = now.toISOString()
+    let totalInputTokens = 0
+    let totalOutputTokens = 0
 
     for (const template of templates) {
       try {
-        const content = await generateContent({
+        const result = await generateContent({
           prompt: template.prompt,
           article,
           engine: ai_engine,
         })
 
+        totalInputTokens += result.inputTokens
+        totalOutputTokens += result.outputTokens
+
         outputs.push({
           template_id: template.id,
           template_name: template.name,
-          content,
+          content: result.text,
           status: 'success',
           generated_at: generatedAt,
         })
@@ -297,6 +307,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         template_count: template_ids.length,
         success_count: successCount,
         error_count: errorCount,
+        input_tokens: totalInputTokens,
+        output_tokens: totalOutputTokens,
+        total_tokens: totalInputTokens + totalOutputTokens,
         created_at: generatedAt,
       })
 
