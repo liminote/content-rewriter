@@ -144,9 +144,9 @@ export const useAdminDashboardStore = create<AdminDashboardState>((set, get) => 
       // 4. 使用者排行（本月）
       const { data: quotaData, error: quotaError } = await supabase
         .from('usage_quota')
-        .select('user_id, monthly_usage, profiles(name)')
+        .select('user_id, usage_count, profiles(name)')
         .eq('current_month', `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`)
-        .order('monthly_usage', { ascending: false })
+        .order('usage_count', { ascending: false })
         .limit(10)
 
       if (quotaError) throw quotaError
@@ -154,7 +154,7 @@ export const useAdminDashboardStore = create<AdminDashboardState>((set, get) => 
       const topUsers = (quotaData || []).map((item: any) => ({
         user_id: item.user_id,
         user_name: item.profiles?.name || '未知',
-        usage_count: item.monthly_usage || 0,
+        usage_count: item.usage_count || 0,
       }))
 
       // 5. 費用預估（簡化版）
