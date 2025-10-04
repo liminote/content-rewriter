@@ -18,6 +18,7 @@ export function WorkspacePage() {
   const [loading, setLoading] = useState(false)
   const [cooldown, setCooldown] = useState(0)
   const [outputs, setOutputs] = useState<HistoryOutput[]>([])
+  const [editableOutputs, setEditableOutputs] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
 
   // 載入使用者模板和配額
@@ -106,6 +107,13 @@ export function WorkspacePage() {
       })
 
       setOutputs(response.outputs)
+
+      // 初始化可編輯內容
+      const editableContent: Record<string, string> = {}
+      response.outputs.forEach(output => {
+        editableContent[output.template_id] = output.content
+      })
+      setEditableOutputs(editableContent)
 
       // 更新使用量
       if (user) {
@@ -273,28 +281,41 @@ export function WorkspacePage() {
                         : 'border-white/30 bg-white/40 backdrop-blur-sm'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="mb-3">
                       <h3 className="font-medium text-indigo-800">
                         {output.template_name}
                       </h3>
-                      {output.status === 'success' && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(output.content)
-                            // TODO: 顯示複製成功提示
-                            alert('✓ 已複製！前往 Threads 發佈')
-                          }}
-                          className="px-4 py-2 text-sm bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-2xl hover:from-blue-600 hover:to-cyan-700 transition shadow-lg hover:scale-105 font-medium"
-                        >
-                          複製
-                        </button>
-                      )}
                     </div>
 
                     {output.status === 'success' ? (
-                      <div className="text-sm text-slate-700 whitespace-pre-wrap">
-                        {output.content}
-                      </div>
+                      <>
+                        <textarea
+                          value={editableOutputs[output.template_id] || output.content}
+                          onChange={(e) => {
+                            setEditableOutputs(prev => ({
+                              ...prev,
+                              [output.template_id]: e.target.value
+                            }))
+                          }}
+                          className="w-full px-4 py-3 bg-white/40 backdrop-blur-sm border border-white/30 rounded-2xl focus:ring-2 focus:ring-blue-500/50 focus:border-transparent resize-none text-sm text-slate-700 min-h-[200px]"
+                          rows={8}
+                        />
+                        <div className="mt-3 flex items-center justify-between">
+                          <span className="text-sm text-slate-500">
+                            {(editableOutputs[output.template_id] || output.content).length} 字元
+                          </span>
+                          <button
+                            onClick={() => {
+                              const contentToCopy = editableOutputs[output.template_id] || output.content
+                              navigator.clipboard.writeText(contentToCopy)
+                              alert('✓ 已複製！前往 Threads 發佈')
+                            }}
+                            className="px-4 py-2 text-sm bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-2xl hover:from-blue-600 hover:to-cyan-700 transition shadow-lg hover:scale-105 font-medium"
+                          >
+                            複製
+                          </button>
+                        </div>
+                      </>
                     ) : (
                       <div className="text-sm text-red-600">
                         ❌ {output.error_message || '產出失敗'}
