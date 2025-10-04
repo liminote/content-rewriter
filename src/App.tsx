@@ -10,6 +10,7 @@ import { InvitePage } from './pages/InvitePage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { TemplatesPage } from './pages/TemplatesPage'
 import { HistoryPage } from './pages/HistoryPage'
+import { ScheduledPostsPage } from './pages/ScheduledPostsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { GuidePage } from './pages/GuidePage'
 
@@ -45,6 +46,7 @@ function App() {
           <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="/templates" element={<TemplatesPage />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/scheduled-posts" element={<ScheduledPostsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/guide" element={<GuidePage />} />
         </Route>

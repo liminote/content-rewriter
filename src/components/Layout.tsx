@@ -56,6 +56,9 @@ export function Layout({ children }: LayoutProps) {
               <Link to="/history" className={navLinkClass('/history')}>
                 歷史記錄
               </Link>
+              <Link to="/scheduled-posts" className={navLinkClass('/scheduled-posts')}>
+                排程發文
+              </Link>
               <Link to="/settings" className={navLinkClass('/settings')}>
                 設定
               </Link>

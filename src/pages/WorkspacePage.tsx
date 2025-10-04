@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Layout } from '@/components/Layout'
 import { useAuthStore } from '@/store/authStore'
 import { useUsageStore } from '@/store/usageStore'
+import { useScheduledPostsStore } from '@/store/scheduledPostsStore'
 import { supabase } from '@/lib/supabase/client'
 import { api } from '@/lib/apiClient'
 import type { Template, AIEngine, HistoryOutput } from '@/types'
@@ -9,8 +10,10 @@ import type { Template, AIEngine, HistoryOutput } from '@/types'
 export function WorkspacePage() {
   const { user } = useAuthStore()
   const { quota, fetchQuota, checkQuotaLimit } = useUsageStore()
+  const { createPosts } = useScheduledPostsStore()
 
   // 狀態管理
+  const [sourceTitle, setSourceTitle] = useState('')
   const [article, setArticle] = useState('')
   const [selectedAI, setSelectedAI] = useState<AIEngine>('gemini')
   const [templates, setTemplates] = useState<Template[]>([])
@@ -19,7 +22,9 @@ export function WorkspacePage() {
   const [cooldown, setCooldown] = useState(0)
   const [outputs, setOutputs] = useState<HistoryOutput[]>([])
   const [editableOutputs, setEditableOutputs] = useState<Record<string, string>>({})
+  const [selectedOutputs, setSelectedOutputs] = useState<string[]>([])
   const [error, setError] = useState('')
+  const [sendingToSchedule, setSendingToSchedule] = useState(false)
 
   // 載入使用者模板和配額
   useEffect(() => {
@@ -140,7 +145,48 @@ export function WorkspacePage() {
   }
 
   const handleClear = () => {
+    setSourceTitle('')
     setArticle('')
+  }
+
+  const handleOutputToggle = (templateId: string) => {
+    setSelectedOutputs(prev =>
+      prev.includes(templateId)
+        ? prev.filter(id => id !== templateId)
+        : [...prev, templateId]
+    )
+  }
+
+  const handleSendToSchedule = async () => {
+    if (selectedOutputs.length === 0) {
+      alert('請至少選擇一個產出結果')
+      return
+    }
+
+    if (!sourceTitle.trim()) {
+      alert('請輸入來源文章標題')
+      return
+    }
+
+    setSendingToSchedule(true)
+    try {
+      const outputsToSend = outputs
+        .filter(output => selectedOutputs.includes(output.template_id) && output.status === 'success')
+        .map(output => ({
+          content: editableOutputs[output.template_id] || output.content,
+          platform: 'threads' as const,
+        }))
+
+      await createPosts(sourceTitle, outputsToSend)
+
+      alert(`已成功送出 ${outputsToSend.length} 個貼文到排程發文頁面！`)
+      setSelectedOutputs([])
+    } catch (error) {
+      console.error('送到排程失敗:', error)
+      alert(error instanceof Error ? error.message : '送到排程失敗')
+    } finally {
+      setSendingToSchedule(false)
+    }
   }
 
   return (
@@ -168,6 +214,21 @@ export function WorkspacePage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 左側：輸入區 */}
           <div className="space-y-6">
+            {/* 來源文章標題 */}
+            <div className="bg-white/30 backdrop-blur-xl border border-white/20 rounded-3xl shadow-xl p-6">
+              <label className="block text-sm font-medium text-indigo-800 mb-2">
+                來源文章標題
+              </label>
+              <input
+                type="text"
+                value={sourceTitle}
+                onChange={(e) => setSourceTitle(e.target.value)}
+                placeholder="例如：2024 年度回顧"
+                className="w-full px-4 py-3 bg-white/40 backdrop-blur-sm border border-white/30 rounded-2xl focus:ring-2 focus:ring-blue-500/50 focus:border-transparent placeholder-indigo-400 hover:bg-white/50 transition"
+              />
+              <p className="mt-2 text-xs text-slate-500">此標題將用於排程發文頁面的分組顯示</p>
+            </div>
+
             {/* 文章輸入框 */}
             <div className="bg-white/30 backdrop-blur-xl border border-white/20 rounded-3xl shadow-xl p-6">
               <label className="block text-sm font-medium text-indigo-800 mb-2">
@@ -251,7 +312,18 @@ export function WorkspacePage() {
 
           {/* 右側：產出結果 */}
           <div className="bg-white/30 backdrop-blur-xl border border-white/20 rounded-3xl shadow-xl p-6">
-            <h2 className="text-lg font-medium text-indigo-800 mb-4">產出結果</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-medium text-indigo-800">產出結果</h2>
+              {outputs.length > 0 && selectedOutputs.length > 0 && (
+                <button
+                  onClick={handleSendToSchedule}
+                  disabled={sendingToSchedule}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white text-sm rounded-2xl hover:from-purple-600 hover:to-pink-700 transition shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                >
+                  {sendingToSchedule ? '送出中...' : `送到排程發文 (${selectedOutputs.length})`}
+                </button>
+              )}
+            </div>
 
             {/* 錯誤訊息 */}
             {error && (
@@ -278,13 +350,25 @@ export function WorkspacePage() {
                     className={`border rounded-2xl p-4 ${
                       output.status === 'error'
                         ? 'border-red-200 bg-red-50/50 backdrop-blur-sm'
+                        : selectedOutputs.includes(output.template_id)
+                        ? 'border-blue-300 bg-blue-50/30 backdrop-blur-sm'
                         : 'border-white/30 bg-white/40 backdrop-blur-sm'
                     }`}
                   >
-                    <div className="mb-3">
-                      <h3 className="font-medium text-indigo-800">
-                        {output.template_name}
-                      </h3>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {output.status === 'success' && (
+                          <input
+                            type="checkbox"
+                            checked={selectedOutputs.includes(output.template_id)}
+                            onChange={() => handleOutputToggle(output.template_id)}
+                            className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-white/30 rounded"
+                          />
+                        )}
+                        <h3 className="font-medium text-indigo-800">
+                          {output.template_name}
+                        </h3>
+                      </div>
                     </div>
 
                     {output.status === 'success' ? (

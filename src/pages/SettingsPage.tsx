@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Layout } from '@/components/Layout'
 import { useAuthStore } from '@/store/authStore'
+import { useThreadsAuthStore } from '@/store/threadsAuthStore'
 import { supabase } from '@/lib/supabase/client'
 
 export function SettingsPage() {
   const { profile } = useAuthStore()
+  const { isConnected, threadsUserId, checkConnection, startAuthorization, disconnect } = useThreadsAuthStore()
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -22,6 +24,29 @@ export function SettingsPage() {
       setEmail(profile.email)
     }
   }, [profile])
+
+  useEffect(() => {
+    checkConnection()
+
+    // 檢查 OAuth callback 的 URL 參數
+    const params = new URLSearchParams(window.location.search)
+    const threadsAuth = params.get('threads_auth')
+
+    if (threadsAuth === 'success') {
+      setMessage({ type: 'success', text: 'Threads 帳號連結成功！' })
+      checkConnection()
+      // 清除 URL 參數
+      window.history.replaceState({}, '', '/settings')
+    } else if (threadsAuth === 'error') {
+      setMessage({ type: 'error', text: 'Threads 帳號連結失敗，請重試' })
+      // 清除 URL 參數
+      window.history.replaceState({}, '', '/settings')
+    } else if (threadsAuth === 'cancelled') {
+      setMessage({ type: 'error', text: '您已取消 Threads 帳號授權' })
+      // 清除 URL 參數
+      window.history.replaceState({}, '', '/settings')
+    }
+  }, [checkConnection])
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -85,6 +110,32 @@ export function SettingsPage() {
       setMessage({ type: 'success', text: '密碼已更新' })
       setNewPassword('')
       setConfirmPassword('')
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleThreadsConnect = async () => {
+    setLoading(true)
+    setMessage(null)
+    try {
+      await startAuthorization()
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message })
+      setLoading(false)
+    }
+  }
+
+  const handleThreadsDisconnect = async () => {
+    if (!confirm('確定要解除連結 Threads 帳號嗎？')) return
+
+    setLoading(true)
+    setMessage(null)
+    try {
+      await disconnect()
+      setMessage({ type: 'success', text: 'Threads 帳號已解除連結' })
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message })
     } finally {
@@ -206,6 +257,45 @@ export function SettingsPage() {
               {loading ? '更新中...' : '更新密碼'}
             </button>
           </form>
+        </div>
+
+        {/* Threads 帳號連結卡片 */}
+        <div className="bg-white/30 backdrop-blur-xl border border-white/20 rounded-3xl shadow-xl p-6">
+          <h2 className="text-lg font-medium text-indigo-800 mb-4">Threads 帳號連結</h2>
+          <p className="text-sm text-slate-600 mb-4">
+            連結您的 Threads 帳號以啟用自動發文功能
+          </p>
+
+          {isConnected ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-green-50/50 backdrop-blur-sm rounded-2xl border border-green-200">
+                <div>
+                  <p className="text-sm font-medium text-green-700">已連結 Threads 帳號</p>
+                  {threadsUserId && (
+                    <p className="text-xs text-green-600 mt-1">User ID: {threadsUserId}</p>
+                  )}
+                </div>
+                <span className="px-3 py-1 bg-green-100/50 text-green-700 text-xs rounded-xl border border-green-200 font-medium">
+                  ✓ 已連結
+                </span>
+              </div>
+              <button
+                onClick={handleThreadsDisconnect}
+                disabled={loading}
+                className="px-4 py-2 bg-red-50/50 backdrop-blur-sm text-red-600 rounded-2xl hover:bg-red-100/50 transition border border-red-200 disabled:opacity-50 text-sm"
+              >
+                解除連結
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleThreadsConnect}
+              disabled={loading}
+              className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-2xl hover:from-purple-600 hover:to-pink-700 transition hover:scale-105 shadow-lg font-medium disabled:opacity-50"
+            >
+              {loading ? '處理中...' : '連結 Threads 帳號'}
+            </button>
+          )}
         </div>
 
         {/* 帳號資訊卡片 */}
