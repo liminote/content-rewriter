@@ -119,6 +119,8 @@ async function generateWithGemini(prompt: string, article: string): Promise<stri
 
   const fullPrompt = `${prompt}
 
+【重要】請使用繁體中文回答，不要使用英文或簡體中文。
+
 文章內容：
 ${article}`
 
