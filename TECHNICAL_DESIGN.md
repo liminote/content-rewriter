@@ -1,9 +1,10 @@
 # Content Rewriter 技術設計文件
 
 ## 文件版本
-- **版本**: 1.0
-- **更新日期**: 2025-10-03
+- **版本**: 1.1
+- **更新日期**: 2025-10-04
 - **作者**: Claude (基於 CTO 審查後的技術決策)
+- **變更記錄**: 新增併發處理、Rate Limiting、錯誤處理章節
 
 ---
 
@@ -1121,7 +1122,456 @@ content-rewriter/
 
 ---
 
-## 13. 未來優化方向
+## 13. 併發處理與原子性更新
+
+### 13.1 問題背景
+
+當多個使用者同時發送請求時，可能發生 **race condition**，導致配額計算錯誤。
+
+**錯誤範例**:
+```
+時間 T1: 請求 A 讀取 usage_count = 10
+時間 T2: 請求 B 讀取 usage_count = 10
+時間 T3: 請求 A 更新 usage_count = 11  ❌ 應該是 11
+時間 T4: 請求 B 更新 usage_count = 11  ❌ 應該是 12（被覆蓋）
+```
+
+### 13.2 解決方案：PostgreSQL 原子函數
+
+**Migration 007: `increment_usage_count`**
+
+```sql
+CREATE OR REPLACE FUNCTION increment_usage_count(
+  p_user_id UUID,
+  p_increment INTEGER
+)
+RETURNS TABLE (
+  id UUID,
+  user_id UUID,
+  monthly_limit INTEGER,
+  current_month TEXT,
+  usage_count INTEGER,
+  updated_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  RETURN QUERY
+  UPDATE usage_quota
+  SET
+    usage_count = usage_quota.usage_count + p_increment,  -- 原子性增加
+    updated_at = NOW()
+  WHERE usage_quota.user_id = p_user_id
+  RETURNING
+    usage_quota.id,
+    usage_quota.user_id,
+    usage_quota.monthly_limit,
+    usage_quota.current_month,
+    usage_quota.usage_count,
+    usage_quota.updated_at;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**關鍵技術**:
+- 使用 `UPDATE ... RETURNING` 確保讀取和更新在同一個交易中
+- PostgreSQL 自動鎖定該筆資料，防止其他交易同時修改
+
+### 13.3 API 整合
+
+```typescript
+// api/generate.ts (Lines 307-330)
+
+// 原子性更新使用量配額
+const { data: updatedQuota, error: updateQuotaError } = await supabaseAdmin
+  .rpc('increment_usage_count', {
+    p_user_id: user.id,
+    p_increment: successCount
+  })
+  .single()
+
+// 降級處理（Fallback）
+if (updateQuotaError) {
+  console.error('Failed to update quota:', updateQuotaError)
+  const { data: fallbackQuota } = await supabaseAdmin
+    .from('usage_quota')
+    .update({
+      usage_count: quota.usage_count + successCount,
+      updated_at: now.toISOString(),
+    })
+    .eq('id', quota.id)
+    .select()
+    .single()
+}
+```
+
+### 13.4 測試驗證
+
+執行 `scripts/test-fixes.ts`:
+
+```typescript
+// 測試原子更新
+const { data: before } = await supabase
+  .from('usage_quota')
+  .select('usage_count')
+  .eq('user_id', userId)
+  .single()
+
+const { data: result } = await supabase
+  .rpc('increment_usage_count', {
+    p_user_id: userId,
+    p_increment: 3
+  })
+  .single()
+
+// 驗證：12 + 3 = 15 ✅
+console.log(result.usage_count === before.usage_count + 3)  // true
+```
+
+---
+
+## 14. Rate Limiting 實作
+
+### 14.1 需求分析
+
+防止使用者濫用 API，限制每分鐘請求次數。
+
+**規則**:
+- 每位使用者每分鐘最多 10 次請求
+- 超過限制返回 `429 Too Many Requests`
+- 提供 `retryAfter` 欄位告知重試時間
+
+### 14.2 資料庫層級實作
+
+**Migration 008: `check_rate_limit`**
+
+```sql
+-- 在 profiles 表新增欄位
+ALTER TABLE public.profiles
+ADD COLUMN last_request_at TIMESTAMPTZ,
+ADD COLUMN request_count_minute INTEGER DEFAULT 0;
+
+-- 創建 Rate Limit 檢查函數
+CREATE OR REPLACE FUNCTION check_rate_limit(
+  p_user_id UUID,
+  p_max_requests INTEGER DEFAULT 10
+)
+RETURNS TABLE (
+  allowed BOOLEAN,
+  current_count INTEGER,
+  reset_at TIMESTAMPTZ
+) AS $$
+DECLARE
+  v_last_request TIMESTAMPTZ;
+  v_count INTEGER;
+  v_current_minute TIMESTAMPTZ;
+BEGIN
+  -- 取得當前分鐘的開始時間
+  v_current_minute := date_trunc('minute', NOW());
+
+  -- 取得使用者的最後請求時間和計數
+  SELECT last_request_at, request_count_minute
+  INTO v_last_request, v_count
+  FROM profiles
+  WHERE id = p_user_id;
+
+  -- 如果是新的分鐘，重置計數
+  IF v_last_request IS NULL OR date_trunc('minute', v_last_request) < v_current_minute THEN
+    v_count := 0;
+  END IF;
+
+  -- 增加計數
+  v_count := v_count + 1;
+
+  -- 更新資料庫
+  UPDATE profiles
+  SET
+    last_request_at = NOW(),
+    request_count_minute = v_count
+  WHERE id = p_user_id;
+
+  -- 返回結果
+  RETURN QUERY SELECT
+    v_count <= p_max_requests AS allowed,
+    v_count AS current_count,
+    v_current_minute + INTERVAL '1 minute' AS reset_at;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+### 14.3 API 整合
+
+```typescript
+// api/generate.ts (Lines 164-181)
+
+const { data: rateLimitResult, error: rateLimitError } = await supabaseAdmin
+  .rpc('check_rate_limit', {
+    p_user_id: user.id,
+    p_max_requests: 10
+  })
+  .single()
+
+if (rateLimitError) {
+  console.error('Rate limit check failed:', rateLimitError)
+  // 降級處理：繼續執行（避免因 Rate Limit 功能異常而阻擋正常請求）
+} else if (rateLimitResult && !rateLimitResult.allowed) {
+  return res.status(429).json({
+    error: 'Too many requests',
+    message: `每分鐘最多 10 次請求，請稍後再試`,
+    retryAfter: Math.ceil((new Date(rateLimitResult.reset_at).getTime() - Date.now()) / 1000)
+  })
+}
+```
+
+### 14.4 測試驗證
+
+```typescript
+// scripts/test-fixes.ts
+
+// 清空計數
+await supabase
+  .from('profiles')
+  .update({
+    last_request_at: null,
+    request_count_minute: 0
+  })
+  .eq('id', userId)
+
+// 測試前 10 次請求應該成功
+for (let i = 1; i <= 10; i++) {
+  const { data } = await supabase
+    .rpc('check_rate_limit', {
+      p_user_id: userId,
+      p_max_requests: 10
+    })
+    .single()
+
+  console.log(`${i}/10: allowed=${data.allowed}`)  // true
+}
+
+// 第 11 次應該被拒絕
+const { data: rejected } = await supabase
+  .rpc('check_rate_limit', {
+    p_user_id: userId,
+    p_max_requests: 10
+  })
+  .single()
+
+console.log(rejected.allowed)  // false ✅
+```
+
+---
+
+## 15. 配額檢查順序優化
+
+### 15.1 問題背景
+
+**錯誤的流程**（舊版）:
+```
+1. 檢查配額（使用 template_ids.length）
+2. 驗證模板是否存在
+```
+
+**問題**:
+- 如果使用者選擇 5 個模板，但其中 3 個已被刪除
+- 配額檢查會用 5 去檢查，但實際只需要用 2
+- 可能錯誤地返回「配額不足」
+
+### 15.2 正確流程
+
+**Migration 後（新版）**:
+```
+1. 先驗證模板是否存在（取得實際可用的模板）
+2. 使用實際模板數量檢查配額
+3. 產出內容
+4. 按成功數量扣除配額
+```
+
+### 15.3 程式碼實作
+
+```typescript
+// api/generate.ts (Lines 190-241)
+
+// 3. 先取得並驗證模板（避免用不存在的模板數量檢查配額）
+const { data: templates, error: templatesError } = await supabaseAdmin
+  .from('templates')
+  .select('*')
+  .in('id', template_ids)
+  .eq('user_id', user.id)
+
+if (templatesError || !templates || templates.length === 0) {
+  return res.status(400).json({ error: 'Invalid template IDs' })  // 先返回模板錯誤
+}
+
+// 4. 檢查使用量配額（使用實際模板數量）
+const { data: quota } = await supabaseAdmin
+  .from('usage_quota')
+  .select('*')
+  .eq('user_id', user.id)
+  .single()
+
+// 檢查配額限制（使用實際可用的模板數量）
+if (quota.usage_count + templates.length > quota.monthly_limit) {
+  return res.status(429).json({
+    error: 'Monthly quota exceeded',
+    usage: {
+      current: quota.usage_count,
+      limit: quota.monthly_limit,
+    },
+  })
+}
+```
+
+### 15.4 測試方式
+
+**手動測試**（在瀏覽器中）:
+
+1. 選擇一個不存在的 `template_id`（隨便輸入一個假的 UUID）
+2. 發送請求
+3. **預期結果**: 返回 `Invalid template IDs`（而非配額錯誤）
+4. **驗證**: 檢查配額沒有被錯誤扣除
+
+---
+
+## 16. 錯誤處理策略
+
+### 16.1 錯誤分類
+
+| 錯誤類型 | HTTP 狀態碼 | 處理方式 | 記錄等級 |
+|---------|-----------|---------|---------|
+| 認證失敗 | 401 | 返回錯誤，不記錄詳細資訊 | Info |
+| 權限不足 | 403 | 返回錯誤，記錄使用者 ID | Warning |
+| 資料驗證失敗 | 400 | 返回詳細錯誤訊息 | Info |
+| 配額超限 | 429 | 返回剩餘配額資訊 | Info |
+| AI API 失敗 | 500 | 記錄錯誤，返回通用訊息 | Error |
+| 資料庫錯誤 | 500 | 記錄完整錯誤，返回通用訊息 | Critical |
+
+### 16.2 錯誤回應格式
+
+```typescript
+// 標準錯誤回應
+interface ErrorResponse {
+  error: string;           // 錯誤類型（簡短）
+  message?: string;        // 詳細訊息（選用）
+  retryAfter?: number;     // 重試時間（Rate Limit 專用）
+  usage?: {                // 配額資訊（Quota 專用）
+    current: number;
+    limit: number;
+  };
+}
+```
+
+### 16.3 錯誤處理實作
+
+```typescript
+// api/generate.ts (Lines 355-369)
+
+try {
+  // ... 主邏輯
+} catch (error) {
+  console.error('API Error:', error)
+
+  const message = error instanceof Error ? error.message : 'Internal server error'
+
+  // 根據錯誤訊息返回適當的狀態碼
+  if (message.includes('authorization') || message.includes('token')) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  if (message.includes('disabled') || message.includes('expired') || message.includes('not started')) {
+    return res.status(403).json({ error: message })
+  }
+
+  // 預設返回 500
+  return res.status(500).json({ error: message })
+}
+```
+
+### 16.4 降級處理（Graceful Degradation）
+
+當非關鍵功能失敗時，繼續執行主流程：
+
+```typescript
+// Rate Limit 檢查失敗 → 繼續執行
+if (rateLimitError) {
+  console.error('Rate limit check failed:', rateLimitError)
+  // 不阻擋請求
+}
+
+// 儲存歷史失敗 → 不影響回應
+if (historyError) {
+  console.error('Failed to save history:', historyError)
+  // 不影響回應，繼續執行
+}
+
+// 原子更新失敗 → 使用降級方式
+if (updateQuotaError) {
+  console.error('Failed to update quota:', updateQuotaError)
+  // 嘗試降級到原來的方式
+  const { data: fallbackQuota } = await supabaseAdmin
+    .from('usage_quota')
+    .update({ usage_count: quota.usage_count + successCount })
+    .eq('id', quota.id)
+    .select()
+    .single()
+}
+```
+
+---
+
+## 17. 時區處理
+
+### 17.1 問題背景
+
+配額計算使用「月份」作為重置週期，必須確保所有使用者在同一時區下計算。
+
+**錯誤做法**:
+```typescript
+const currentMonth = new Date().toLocaleString('en-US', { month: '2-digit', year: 'numeric' })
+// ❌ 會因使用者所在時區不同而產生不同結果
+```
+
+### 17.2 正確做法：統一使用 UTC
+
+```typescript
+// api/generate.ts (Lines 213-214)
+
+const now = new Date()
+const currentMonth = now.toISOString().slice(0, 7)  // "YYYY-MM" (UTC)
+```
+
+**範例**:
+```typescript
+// 台灣時間 2025-10-01 00:30
+// UTC 時間 2025-09-30 16:30
+// currentMonth = "2025-09"  ✅ 正確（使用 UTC）
+
+// 錯誤做法：
+// currentMonth = "2025-10"  ❌ 錯誤（台灣時區提前一天）
+```
+
+### 17.3 重置邏輯
+
+```typescript
+// api/generate.ts (Lines 217-230)
+
+if (quotaMonth !== currentMonth) {
+  // 重置配額
+  await supabaseAdmin
+    .from('usage_quota')
+    .update({
+      current_month: currentMonth,
+      usage_count: 0,
+      updated_at: now.toISOString(),
+    })
+    .eq('id', quota.id)
+
+  quota.usage_count = 0
+  quota.current_month = currentMonth
+}
+```
+
+---
+
+## 18. 未來優化方向
 
 ### 短期（1-3 個月）
 - [ ] 整合 Sentry 錯誤監控
