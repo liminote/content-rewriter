@@ -269,11 +269,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 不影響回應，繼續執行
     }
 
-    // 7. 更新使用量配額
+    // 7. 計算成功和失敗數量
+    const successCount = outputs.filter(o => o.status === 'success').length
+    const errorCount = outputs.filter(o => o.status === 'error').length
+
+    // 8. 更新使用量配額（按成功產出的模板數量計算）
     const { data: updatedQuota, error: updateQuotaError } = await supabaseAdmin
       .from('usage_quota')
       .update({
-        usage_count: quota.usage_count + 1,
+        usage_count: quota.usage_count + successCount,
         updated_at: now.toISOString(),
       })
       .eq('id', quota.id)
@@ -284,22 +288,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('Failed to update quota:', updateQuotaError)
     }
 
-    // 8. 記錄到 usage_logs 表
+    // 9. 記錄到 usage_logs 表
     await supabaseAdmin
       .from('usage_logs')
       .insert({
         user_id: user.id,
         ai_engine,
         template_count: template_ids.length,
-        success_count: outputs.filter(o => o.status === 'success').length,
+        success_count: successCount,
+        error_count: errorCount,
         created_at: generatedAt,
       })
 
-    // 9. 返回結果
+    // 10. 返回結果
     return res.status(200).json({
       outputs,
       usage: {
-        current: updatedQuota?.usage_count || quota.usage_count + 1,
+        current: updatedQuota?.usage_count || quota.usage_count + successCount,
         limit: quota.monthly_limit,
       },
     })
