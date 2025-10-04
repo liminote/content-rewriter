@@ -10,15 +10,27 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
   },
 })
 
-const THREADS_APP_ID = process.env.THREADS_APP_ID!
-const REDIRECT_URI = process.env.THREADS_REDIRECT_URI!
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
   try {
+    // 讀取環境變數（在 handler 內讀取以確保取得最新值）
+    const THREADS_APP_ID = process.env.THREADS_APP_ID
+    const REDIRECT_URI = process.env.THREADS_REDIRECT_URI
+
+    // 除錯：檢查環境變數
+    if (!THREADS_APP_ID) {
+      console.error('THREADS_APP_ID is not set')
+      return res.status(500).json({ error: 'Server configuration error: THREADS_APP_ID not set' })
+    }
+
+    if (!REDIRECT_URI) {
+      console.error('THREADS_REDIRECT_URI is not set')
+      return res.status(500).json({ error: 'Server configuration error: THREADS_REDIRECT_URI not set' })
+    }
+
     // 驗證使用者
     const authHeader = req.headers.authorization
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
