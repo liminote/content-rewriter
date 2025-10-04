@@ -112,7 +112,6 @@ export interface UsageQuota {
   monthly_limit: number
   current_month: string
   usage_count: number
-  monthly_usage: number  // 別名，與 usage_count 相同
   updated_at: string
 }
 

@@ -39,7 +39,7 @@ export const useUsageStore = create<UsageState>((set, get) => ({
     const { quota } = get()
     if (!quota) return false
 
-    return quota.monthly_usage >= quota.monthly_limit
+    return quota.usage_count >= quota.monthly_limit
   },
 
   incrementUsage: async () => {
@@ -50,7 +50,7 @@ export const useUsageStore = create<UsageState>((set, get) => ({
       const { data, error } = await supabase
         .from('usage_quota')
         .update({
-          monthly_usage: quota.monthly_usage + 1,
+          usage_count: quota.usage_count + 1,
           updated_at: new Date().toISOString(),
         })
         .eq('id', quota.id)

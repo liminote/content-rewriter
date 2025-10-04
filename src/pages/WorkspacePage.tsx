@@ -91,7 +91,7 @@ export function WorkspacePage() {
 
     // 檢查使用量配額
     if (checkQuotaLimit()) {
-      setError(`本月產出次數已達上限（${quota?.monthly_usage}/${quota?.monthly_limit}），請聯絡管理員或等待下月重置`)
+      setError(`本月產出次數已達上限（${quota?.usage_count}/${quota?.monthly_limit}），請聯絡管理員或等待下月重置`)
       return
     }
 
@@ -158,7 +158,7 @@ export function WorkspacePage() {
             <div className="text-right bg-white/30 backdrop-blur-xl border border-white/20 rounded-2xl px-6 py-2 shadow-lg">
               <p className="text-sm text-slate-500">本月已使用</p>
               <p className="text-2xl font-bold text-indigo-800">
-                {quota.monthly_usage || 0} / {quota.monthly_limit}
+                {quota.usage_count || 0} / {quota.monthly_limit}
               </p>
               <p className="text-xs text-slate-400 mt-1">次</p>
             </div>
