@@ -264,7 +264,7 @@ export function WorkspacePage() {
             {/* 產出結果 */}
             {!loading && outputs.length > 0 && (
               <div className="space-y-4">
-                {outputs.map((output, index) => (
+                {outputs.map((output) => (
                   <div
                     key={output.template_id}
                     className={`border rounded-2xl p-4 ${
