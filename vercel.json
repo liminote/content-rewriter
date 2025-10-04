@@ -2,11 +2,19 @@
   "buildCommand": "npm run build",
   "devCommand": "vite",
   "installCommand": "npm install",
+  "outputDirectory": "dist",
   "framework": null,
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/:path*"
+      "handle": "filesystem"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ],
   "functions": {
