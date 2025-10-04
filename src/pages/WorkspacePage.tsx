@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Layout } from '@/components/Layout'
 import { useAuthStore } from '@/store/authStore'
 import { useUsageStore } from '@/store/usageStore'
@@ -158,7 +158,7 @@ export function WorkspacePage() {
             <div className="text-right bg-white/30 backdrop-blur-xl border border-white/20 rounded-2xl px-6 py-2 shadow-lg">
               <p className="text-sm text-slate-500">本月已使用</p>
               <p className="text-2xl font-bold text-indigo-800">
-                {quota.monthly_usage} / {quota.monthly_limit}
+                {quota.monthly_usage || 0} / {quota.monthly_limit}
               </p>
               <p className="text-xs text-slate-400 mt-1">次</p>
             </div>
@@ -290,6 +290,12 @@ export function WorkspacePage() {
                     {output.status === 'success' ? (
                       <>
                         <textarea
+                          ref={(el) => {
+                            if (el) {
+                              el.style.height = 'auto'
+                              el.style.height = el.scrollHeight + 'px'
+                            }
+                          }}
                           value={editableOutputs[output.template_id] || output.content}
                           onChange={(e) => {
                             setEditableOutputs(prev => ({
@@ -297,8 +303,12 @@ export function WorkspacePage() {
                               [output.template_id]: e.target.value
                             }))
                           }}
-                          className="w-full px-4 py-3 bg-white/40 backdrop-blur-sm border border-white/30 rounded-2xl focus:ring-2 focus:ring-blue-500/50 focus:border-transparent resize-none text-sm text-slate-700 min-h-[200px]"
-                          rows={8}
+                          onInput={(e) => {
+                            const target = e.target as HTMLTextAreaElement
+                            target.style.height = 'auto'
+                            target.style.height = target.scrollHeight + 'px'
+                          }}
+                          className="w-full px-4 py-3 bg-white/40 backdrop-blur-sm border border-white/30 rounded-2xl focus:ring-2 focus:ring-blue-500/50 focus:border-transparent resize-none text-sm text-slate-700 overflow-hidden"
                         />
                         <div className="mt-3 flex items-center justify-between">
                           <span className="text-sm text-slate-500">
