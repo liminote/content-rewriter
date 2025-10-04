@@ -308,7 +308,7 @@ export function WorkspacePage() {
                             target.style.height = 'auto'
                             target.style.height = target.scrollHeight + 'px'
                           }}
-                          className="w-full px-4 py-3 bg-white/40 backdrop-blur-sm border border-white/30 rounded-2xl focus:ring-2 focus:ring-blue-500/50 focus:border-transparent resize-none text-sm text-slate-700 overflow-hidden"
+                          className="w-full px-4 py-3 bg-white/40 backdrop-blur-sm border border-white/30 rounded-2xl focus:ring-2 focus:ring-blue-500/50 focus:border-transparent resize-none text-slate-700 overflow-hidden"
                         />
                         <div className="mt-3 flex items-center justify-between">
                           <span className="text-sm text-slate-500">
