@@ -13,7 +13,6 @@ export function SettingsPage() {
   const [email, setEmail] = useState('')
 
   // 密碼修改
-  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
 
@@ -84,7 +83,6 @@ export function SettingsPage() {
       if (error) throw error
 
       setMessage({ type: 'success', text: '密碼已更新' })
-      setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
     } catch (error: any) {

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Layout } from '@/components/Layout'
 import { useHistoryStore } from '@/store/historyStore'
-import type { History } from '@/types'
 
 export function HistoryPage() {
   const { histories, loading, error, fetchHistories, deleteHistory } = useHistoryStore()
