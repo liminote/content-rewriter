@@ -42,7 +42,7 @@ ${article}`
   return text
 }
 
-async function generateWithClaude(prompt: string, article: string): Promise<string> {
+async function generateWithClaude(_prompt: string, _article: string): Promise<string> {
   const apiKey = process.env.CLAUDE_API_KEY
   if (!apiKey) {
     throw new Error('CLAUDE_API_KEY is not configured')
@@ -52,7 +52,7 @@ async function generateWithClaude(prompt: string, article: string): Promise<stri
   throw new Error('Claude API not implemented yet')
 }
 
-async function generateWithOpenAI(prompt: string, article: string): Promise<string> {
+async function generateWithOpenAI(_prompt: string, _article: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY is not configured')

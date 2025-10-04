@@ -151,6 +151,21 @@ interface GenerateOutput {
   generated_at: string
 }
 
+interface RateLimitResult {
+  allowed: boolean
+  current_count: number
+  reset_at: string
+}
+
+interface QuotaUpdateResult {
+  id: string
+  user_id: string
+  monthly_limit: number
+  current_month: string
+  usage_count: number
+  updated_at: string
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 只允許 POST
   if (req.method !== 'POST') {
@@ -163,7 +178,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 2. Rate limiting 檢查（每分鐘最多 10 次請求）
     const { data: rateLimitResult, error: rateLimitError } = await supabaseAdmin
-      .rpc('check_rate_limit', {
+      .rpc<RateLimitResult>('check_rate_limit', {
         p_user_id: user.id,
         p_max_requests: 10
       })
@@ -304,8 +319,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 8. 原子性更新使用量配額（按成功產出的模板數量計算）
     // 使用資料庫函數確保併發安全
-    const { data: updatedQuota, error: updateQuotaError } = await supabaseAdmin
-      .rpc('increment_usage_count', {
+    let { data: updatedQuota, error: updateQuotaError } = await supabaseAdmin
+      .rpc<QuotaUpdateResult>('increment_usage_count', {
         p_user_id: user.id,
         p_increment: successCount
       })
@@ -325,7 +340,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .single()
 
       if (fallbackQuota) {
-        updatedQuota = fallbackQuota as any
+        updatedQuota = fallbackQuota as QuotaUpdateResult
       }
     }
 
