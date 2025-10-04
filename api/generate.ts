@@ -161,14 +161,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 1. 驗證使用者
     const user = await authenticateRequest(req)
 
-    // 2. 取得請求參數
+    // 2. Rate limiting 檢查（每分鐘最多 10 次請求）
+    const { data: rateLimitResult, error: rateLimitError } = await supabaseAdmin
+      .rpc('check_rate_limit', {
+        p_user_id: user.id,
+        p_max_requests: 10
+      })
+      .single()
+
+    if (rateLimitError) {
+      console.error('Rate limit check failed:', rateLimitError)
+      // 如果 rate limit 檢查失敗，繼續執行（降級處理）
+    } else if (rateLimitResult && !rateLimitResult.allowed) {
+      return res.status(429).json({
+        error: 'Too many requests',
+        message: `每分鐘最多 10 次請求，請稍後再試`,
+        retryAfter: Math.ceil((new Date(rateLimitResult.reset_at).getTime() - Date.now()) / 1000)
+      })
+    }
+
+    // 3. 取得請求參數
     const { article, template_ids, ai_engine }: GenerateRequest = req.body
 
     if (!article || !template_ids || template_ids.length === 0 || !ai_engine) {
       return res.status(400).json({ error: 'Missing required parameters' })
     }
 
-    // 3. 檢查使用量配額
+    // 3. 先取得並驗證模板（避免用不存在的模板數量檢查配額）
+    const { data: templates, error: templatesError } = await supabaseAdmin
+      .from('templates')
+      .select('*')
+      .in('id', template_ids)
+      .eq('user_id', user.id)
+
+    if (templatesError || !templates || templates.length === 0) {
+      return res.status(400).json({ error: 'Invalid template IDs' })
+    }
+
+    // 4. 檢查使用量配額（使用實際模板數量）
     const { data: quota, error: quotaError } = await supabaseAdmin
       .from('usage_quota')
       .select('*')
@@ -181,7 +211,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 檢查是否需要重置配額（每月 1 日重置）
     const now = new Date()
-    const currentMonth = now.toISOString().slice(0, 7) // YYYY-MM
+    const currentMonth = now.toISOString().slice(0, 7) // YYYY-MM (UTC)
     const quotaMonth = quota.current_month
 
     if (quotaMonth !== currentMonth) {
@@ -199,8 +229,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       quota.current_month = currentMonth
     }
 
-    // 檢查配額限制
-    if (quota.usage_count >= quota.monthly_limit) {
+    // 檢查配額限制（使用實際可用的模板數量）
+    if (quota.usage_count + templates.length > quota.monthly_limit) {
       return res.status(429).json({
         error: 'Monthly quota exceeded',
         usage: {
@@ -208,17 +238,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           limit: quota.monthly_limit,
         },
       })
-    }
-
-    // 4. 取得模板資訊
-    const { data: templates, error: templatesError } = await supabaseAdmin
-      .from('templates')
-      .select('*')
-      .in('id', template_ids)
-      .eq('user_id', user.id)
-
-    if (templatesError || !templates || templates.length === 0) {
-      return res.status(400).json({ error: 'Invalid template IDs' })
     }
 
     // 5. 依序產出各模板內容
@@ -283,19 +302,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const successCount = outputs.filter(o => o.status === 'success').length
     const errorCount = outputs.filter(o => o.status === 'error').length
 
-    // 8. 更新使用量配額（按成功產出的模板數量計算）
+    // 8. 原子性更新使用量配額（按成功產出的模板數量計算）
+    // 使用資料庫函數確保併發安全
     const { data: updatedQuota, error: updateQuotaError } = await supabaseAdmin
-      .from('usage_quota')
-      .update({
-        usage_count: quota.usage_count + successCount,
-        updated_at: now.toISOString(),
+      .rpc('increment_usage_count', {
+        p_user_id: user.id,
+        p_increment: successCount
       })
-      .eq('id', quota.id)
-      .select()
       .single()
 
     if (updateQuotaError) {
       console.error('Failed to update quota:', updateQuotaError)
+      // 嘗試降級到原來的方式
+      const { data: fallbackQuota } = await supabaseAdmin
+        .from('usage_quota')
+        .update({
+          usage_count: quota.usage_count + successCount,
+          updated_at: now.toISOString(),
+        })
+        .eq('id', quota.id)
+        .select()
+        .single()
+
+      if (fallbackQuota) {
+        updatedQuota = fallbackQuota as any
+      }
     }
 
     // 9. 記錄到 usage_logs 表

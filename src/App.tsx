@@ -9,6 +9,9 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { InvitePage } from './pages/InvitePage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { TemplatesPage } from './pages/TemplatesPage'
+import { HistoryPage } from './pages/HistoryPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { GuidePage } from './pages/GuidePage'
 
 // Admin Pages
 import { AdminDashboard } from './pages/admin/AdminDashboard'
@@ -41,9 +44,9 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="/templates" element={<TemplatesPage />} />
-          {/* <Route path="/history" element={<HistoryPage />} /> */}
-          {/* <Route path="/settings" element={<SettingsPage />} /> */}
-          {/* <Route path="/guide" element={<GuidePage />} /> */}
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/guide" element={<GuidePage />} />
         </Route>
 
         {/* 管理員路由 */}
