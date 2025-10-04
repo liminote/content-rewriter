@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Layout } from '@/components/Layout'
 import { useAuthStore } from '@/store/authStore'
 import { useUsageStore } from '@/store/usageStore'
