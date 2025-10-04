@@ -20,10 +20,6 @@ export function AdminDashboard() {
     })
   }
 
-  const formatCurrency = (amount: number) => {
-    return `$${amount.toFixed(2)}`
-  }
-
   return (
     <Layout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -144,7 +140,7 @@ export function AdminDashboard() {
           <div className="bg-white/30 backdrop-blur-xl border border-white/20 rounded-3xl shadow-xl p-6">
             <h2 className="text-lg font-medium text-indigo-800 mb-4">本月 Token 使用統計</h2>
             <div className="space-y-3">
-              {stats?.tokenUsage.gemini.total > 0 && (
+              {stats?.tokenUsage?.gemini?.total && stats.tokenUsage.gemini.total > 0 && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-slate-700">Gemini</span>
@@ -158,7 +154,7 @@ export function AdminDashboard() {
                   </div>
                 </div>
               )}
-              {stats?.tokenUsage.claude.total > 0 && (
+              {stats?.tokenUsage?.claude?.total && stats.tokenUsage.claude.total > 0 && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-slate-700">Claude</span>
@@ -172,7 +168,7 @@ export function AdminDashboard() {
                   </div>
                 </div>
               )}
-              {stats?.tokenUsage.openai.total > 0 && (
+              {stats?.tokenUsage?.openai?.total && stats.tokenUsage.openai.total > 0 && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-slate-700">OpenAI</span>
@@ -190,7 +186,7 @@ export function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <span className="text-base font-medium text-indigo-800">總計</span>
                   <span className="text-xl font-bold text-indigo-800">
-                    {(stats?.tokenUsage.total.total || 0).toLocaleString()} tokens
+                    {(stats?.tokenUsage?.total?.total || 0).toLocaleString()} tokens
                   </span>
                 </div>
               </div>
