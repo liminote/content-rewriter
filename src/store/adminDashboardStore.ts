@@ -111,34 +111,34 @@ export const useAdminDashboardStore = create<AdminDashboardState>((set, get) => 
 
       const { data: todayLogs, error: todayError } = await supabase
         .from('usage_logs')
-        .select('id')
+        .select('success_count')
         .gte('created_at', today.toISOString())
 
       if (todayError) throw todayError
 
       const { data: weekLogs, error: weekError } = await supabase
         .from('usage_logs')
-        .select('id')
+        .select('success_count')
         .gte('created_at', weekAgo.toISOString())
 
       if (weekError) throw weekError
 
       const { data: monthLogs, error: monthError } = await supabase
         .from('usage_logs')
-        .select('ai_engine')
+        .select('ai_engine, success_count')
         .gte('created_at', monthStart.toISOString())
 
       if (monthError) throw monthError
 
-      const todayGenerations = todayLogs?.length || 0
-      const weekGenerations = weekLogs?.length || 0
-      const monthGenerations = monthLogs?.length || 0
+      const todayGenerations = todayLogs?.reduce((sum, log) => sum + (log.success_count || 0), 0) || 0
+      const weekGenerations = weekLogs?.reduce((sum, log) => sum + (log.success_count || 0), 0) || 0
+      const monthGenerations = monthLogs?.reduce((sum, log) => sum + (log.success_count || 0), 0) || 0
 
       // 3. AI 引擎統計
       const aiEngineStats = {
-        gemini: monthLogs?.filter((log) => log.ai_engine === 'gemini').length || 0,
-        claude: monthLogs?.filter((log) => log.ai_engine === 'claude').length || 0,
-        openai: monthLogs?.filter((log) => log.ai_engine === 'openai').length || 0,
+        gemini: monthLogs?.filter((log) => log.ai_engine === 'gemini').reduce((sum, log) => sum + (log.success_count || 0), 0) || 0,
+        claude: monthLogs?.filter((log) => log.ai_engine === 'claude').reduce((sum, log) => sum + (log.success_count || 0), 0) || 0,
+        openai: monthLogs?.filter((log) => log.ai_engine === 'openai').reduce((sum, log) => sum + (log.success_count || 0), 0) || 0,
       }
 
       // 4. 使用者排行（本月）
