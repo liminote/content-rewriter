@@ -185,21 +185,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from('usage_quota')
         .update({
           current_month: currentMonth,
-          monthly_usage: 0,
+          usage_count: 0,
           updated_at: now.toISOString(),
         })
         .eq('id', quota.id)
 
-      quota.monthly_usage = 0
+      quota.usage_count = 0
       quota.current_month = currentMonth
     }
 
     // 檢查配額限制
-    if (quota.monthly_usage >= quota.monthly_limit) {
+    if (quota.usage_count >= quota.monthly_limit) {
       return res.status(429).json({
         error: 'Monthly quota exceeded',
         usage: {
-          current: quota.monthly_usage,
+          current: quota.usage_count,
           limit: quota.monthly_limit,
         },
       })
@@ -273,7 +273,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: updatedQuota, error: updateQuotaError } = await supabaseAdmin
       .from('usage_quota')
       .update({
-        monthly_usage: quota.monthly_usage + 1,
+        usage_count: quota.usage_count + 1,
         updated_at: now.toISOString(),
       })
       .eq('id', quota.id)
@@ -299,7 +299,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       outputs,
       usage: {
-        current: updatedQuota?.monthly_usage || quota.monthly_usage + 1,
+        current: updatedQuota?.usage_count || quota.usage_count + 1,
         limit: quota.monthly_limit,
       },
     })
