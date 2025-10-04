@@ -1,7 +1,133 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { authenticateRequest } from './lib/auth'
-import { supabaseAdmin } from './lib/supabase'
-import { generateContent, AIEngine } from './lib/ai-providers'
+import { createClient } from '@supabase/supabase-js'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+// ============================================
+// Supabase Client Setup
+// ============================================
+const supabaseUrl = process.env.VITE_SUPABASE_URL!
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error('Missing environment variables:', {
+    hasUrl: !!supabaseUrl,
+    hasServiceKey: !!supabaseServiceRoleKey,
+  })
+}
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+})
+
+// ============================================
+// Types
+// ============================================
+type AIEngine = 'gemini' | 'claude' | 'openai'
+
+interface AuthenticatedUser {
+  id: string
+  email: string
+  role: string
+  is_active: boolean
+  access_start_date: string | null
+  access_end_date: string | null
+}
+
+// ============================================
+// Auth Helper
+// ============================================
+async function authenticateRequest(req: VercelRequest): Promise<AuthenticatedUser> {
+  const authHeader = req.headers.authorization
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new Error('Missing or invalid authorization header')
+  }
+
+  const token = authHeader.replace('Bearer ', '')
+
+  const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+
+  if (authError || !user) {
+    throw new Error('Invalid or expired token')
+  }
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single()
+
+  if (profileError || !profile) {
+    throw new Error('User profile not found')
+  }
+
+  if (!profile.is_active) {
+    throw new Error('Account is disabled')
+  }
+
+  if (profile.role !== 'admin') {
+    const now = new Date()
+    const startDate = profile.access_start_date ? new Date(profile.access_start_date) : null
+    const endDate = profile.access_end_date ? new Date(profile.access_end_date) : null
+
+    if (startDate && now < startDate) {
+      throw new Error('Access not started yet')
+    }
+
+    if (endDate && now > endDate) {
+      throw new Error('Access expired')
+    }
+  }
+
+  return {
+    id: profile.id,
+    email: profile.email,
+    role: profile.role,
+    is_active: profile.is_active,
+    access_start_date: profile.access_start_date,
+    access_end_date: profile.access_end_date,
+  }
+}
+
+// ============================================
+// AI Providers
+// ============================================
+async function generateContent({ prompt, article, engine }: { prompt: string; article: string; engine: AIEngine }): Promise<string> {
+  switch (engine) {
+    case 'gemini':
+      return generateWithGemini(prompt, article)
+    case 'claude':
+      throw new Error('Claude API not implemented yet')
+    case 'openai':
+      throw new Error('OpenAI API not implemented yet')
+    default:
+      throw new Error(`Unsupported AI engine: ${engine}`)
+  }
+}
+
+async function generateWithGemini(prompt: string, article: string): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not configured')
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+
+  const fullPrompt = `${prompt}
+
+文章內容：
+${article}`
+
+  const result = await model.generateContent(fullPrompt)
+  const response = await result.response
+  const text = response.text()
+
+  return text
+}
 
 interface GenerateRequest {
   article: string
